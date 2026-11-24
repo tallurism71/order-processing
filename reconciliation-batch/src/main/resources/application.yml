@@ -1,0 +1,42 @@
+spring:
+  application:
+    name: reconciliation-batch
+  main:
+    web-application-type: none
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/recondb}
+    username: ${DB_USERNAME:recon}
+    password: ${DB_PASSWORD:recon}
+    hikari:
+      maximum-pool-size: 10
+  batch:
+    job:
+      enabled: false              # launched by JobRunner so we control parameters and exit code
+    jdbc:
+      initialize-schema: always
+  flyway:
+    locations: classpath:db/migration
+
+app:
+  orders-datasource:
+    # Read replica in AWS; the primary order DB locally.
+    url: ${ORDERS_DB_URL:jdbc:postgresql://localhost:5432/orderdb}
+    username: ${ORDERS_DB_USERNAME:orders}
+    password: ${ORDERS_DB_PASSWORD:orders}
+    hikari:
+      maximum-pool-size: 6
+  batch:
+    grid-size: ${BATCH_GRID_SIZE:4}
+    chunk-size: 500
+    stuck-order-sla: PT30M
+  extract:
+    target: ${EXTRACT_TARGET:local}   # s3 in AWS
+    local-dir: ${EXTRACT_DIR:./extracts}
+    s3:
+      bucket: ${EXTRACT_BUCKET:}
+      region: ${AWS_REGION:us-east-1}
+
+logging:
+  structured:
+    format:
+      console: ${LOG_FORMAT:ecs}

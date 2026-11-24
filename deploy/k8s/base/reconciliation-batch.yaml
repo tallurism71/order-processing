@@ -1,0 +1,54 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: reconciliation-batch
+  labels: {app: reconciliation-batch, part-of: order-platform}
+spec:
+  schedule: "30 1 * * *"          # 01:30 UTC: reconcile the previous business day
+  timeZone: "Etc/UTC"
+  concurrencyPolicy: Forbid       # never two runs for the same day at once
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      backoffLimit: 2             # a failed run restarts from its Spring Batch checkpoint
+      activeDeadlineSeconds: 7200
+      template:
+        metadata:
+          labels: {app: reconciliation-batch}
+        spec:
+          serviceAccountName: order-platform
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: batch
+              image: reconciliation-batch:latest
+              env:
+                - {name: DB_URL, value: "jdbc:postgresql://recon-db.example.rds.amazonaws.com:5432/recondb?sslmode=require"}
+                - name: DB_USERNAME
+                  valueFrom: {secretKeyRef: {name: reconciliation-batch-db, key: username}}
+                - name: DB_PASSWORD
+                  valueFrom: {secretKeyRef: {name: reconciliation-batch-db, key: password}}
+                - {name: ORDERS_DB_URL, value: "jdbc:postgresql://orders-db-replica.example.rds.amazonaws.com:5432/orderdb?sslmode=require&readOnly=true"}
+                - name: ORDERS_DB_USERNAME
+                  valueFrom: {secretKeyRef: {name: reconciliation-batch-db, key: orders-username}}
+                - name: ORDERS_DB_PASSWORD
+                  valueFrom: {secretKeyRef: {name: reconciliation-batch-db, key: orders-password}}
+                - {name: EXTRACT_TARGET, value: s3}
+                - {name: EXTRACT_BUCKET, value: acme-order-platform-extracts}
+                - {name: AWS_REGION, value: us-east-1}
+                - {name: BATCH_GRID_SIZE, value: "8"}
+              resources:
+                requests: {cpu: "1", memory: 1Gi}
+                limits: {memory: 2Gi}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              volumeMounts:
+                - {name: tmp, mountPath: /tmp}
+          volumes:
+            - {name: tmp, emptyDir: {}}

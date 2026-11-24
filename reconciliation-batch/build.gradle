@@ -1,0 +1,24 @@
+plugins {
+    id 'org.springframework.boot'
+}
+
+// Runs as a Kubernetes CronJob: starts, reconciles one business date, publishes the extract, exits.
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-batch'
+    implementation 'org.springframework.boot:spring-boot-starter-jdbc'
+    implementation 'org.springframework.boot:spring-boot-starter-json'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'org.flywaydb:flyway-core'
+    implementation 'org.flywaydb:flyway-database-postgresql'
+    implementation 'io.micrometer:micrometer-registry-prometheus'
+    implementation 'software.amazon.awssdk:s3'
+    runtimeOnly 'org.postgresql:postgresql'
+
+    testImplementation 'org.springframework.batch:spring-batch-test'
+}
+
+bootJar {
+    archiveFileName = "${project.name}.jar"
+    layered { enabled = true }
+}
+jar { enabled = false }

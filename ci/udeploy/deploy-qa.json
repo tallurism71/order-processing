@@ -1,0 +1,12 @@
+{
+  "application": "order-platform",
+  "applicationProcess": "Deploy All Services",
+  "environment": "QA",
+  "onlyChanged": "true",
+  "versions": [
+    {"component": "order-service", "version": "${VERSION}"},
+    {"component": "inventory-service", "version": "${VERSION}"},
+    {"component": "payment-service", "version": "${VERSION}"},
+    {"component": "reconciliation-batch", "version": "${VERSION}"}
+  ]
+}

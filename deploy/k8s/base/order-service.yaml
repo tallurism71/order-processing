@@ -1,0 +1,111 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: order-service
+  labels: {app: order-service, part-of: order-platform}
+spec:
+  replicas: 3
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels: {app: order-service}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxUnavailable: 0, maxSurge: 1}   # zero-downtime deploys
+  template:
+    metadata:
+      labels: {app: order-service, part-of: order-platform}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /actuator/prometheus
+        prometheus.io/port: "8081"
+    spec:
+      serviceAccountName: order-platform
+      terminationGracePeriodSeconds: 45
+      # Spread replicas across availability zones and nodes: one AZ outage does not take the service down.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector: {matchLabels: {app: order-service}}
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector: {matchLabels: {app: order-service}}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: app
+          image: order-service:latest   # replaced per environment by kustomize / the pipeline
+          ports:
+            - {name: http, containerPort: 8081}
+          envFrom:
+            - configMapRef: {name: platform-config}
+          env:
+            - {name: DB_URL, value: "jdbc:postgresql://orders-db.example.rds.amazonaws.com:5432/orderdb?sslmode=require"}
+            - name: DB_USERNAME
+              valueFrom: {secretKeyRef: {name: order-service-db, key: username}}
+            - name: DB_PASSWORD
+              valueFrom: {secretKeyRef: {name: order-service-db, key: password}}
+            - {name: JAVA_OPTS, value: "-XX:MaxRAMPercentage=75 -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError"}
+          resources:
+            requests: {cpu: 500m, memory: 768Mi}
+            limits: {memory: 1Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+          startupProbe:
+            httpGet: {path: /actuator/health/liveness, port: http}
+            periodSeconds: 5
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: {path: /actuator/health/liveness, port: http}
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: {path: /actuator/health/readiness, port: http}
+            periodSeconds: 5
+            failureThreshold: 3
+          lifecycle:
+            # Let the load balancer stop routing before Spring begins its graceful shutdown.
+            preStop:
+              exec: {command: ["sh", "-c", "sleep 10"]}
+      volumes:
+        - {name: tmp, emptyDir: {}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: order-service
+  labels: {app: order-service}
+spec:
+  selector: {app: order-service}
+  ports:
+    - {name: http, port: 80, targetPort: http}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: order-service
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: order-service}
+  minReplicas: 3
+  maxReplicas: 12   # keep <= Kafka partitions x listener concurrency, and within the DB connection budget
+  metrics:
+    - type: Resource
+      resource: {name: cpu, target: {type: Utilization, averageUtilization: 70}}
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: order-service
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels: {app: order-service}

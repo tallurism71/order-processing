@@ -1,0 +1,2 @@
+com.acme.orderplatform.common.config.PlatformWebAutoConfiguration
+com.acme.orderplatform.common.config.PlatformMessagingAutoConfiguration

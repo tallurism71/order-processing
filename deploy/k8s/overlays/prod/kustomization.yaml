@@ -1,0 +1,21 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: order-platform
+resources:
+  - ../../base
+images:
+  - {name: order-service, newName: 111111111111.dkr.ecr.us-east-1.amazonaws.com/order-service}
+  - {name: inventory-service, newName: 111111111111.dkr.ecr.us-east-1.amazonaws.com/inventory-service}
+  - {name: payment-service, newName: 111111111111.dkr.ecr.us-east-1.amazonaws.com/payment-service}
+  - {name: reconciliation-batch, newName: 111111111111.dkr.ecr.us-east-1.amazonaws.com/reconciliation-batch}
+patches:
+  - target: {kind: ConfigMap, name: platform-config}
+    patch: |-
+      - op: replace
+        path: /data/APP_ENV
+        value: prod
+  - target: {kind: HorizontalPodAutoscaler, name: order-service}
+    patch: |-
+      - op: replace
+        path: /spec/maxReplicas
+        value: 24

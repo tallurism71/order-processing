@@ -1,0 +1,33 @@
+# The same rules are deployed as PrometheusRule objects in Kubernetes and route to PagerDuty/Slack.
+groups:
+  - name: order-platform
+    rules:
+      - alert: HighErrorRate
+        expr: sum by (application) (rate(http_server_requests_seconds_count{status=~"5.."}[5m]))
+              / sum by (application) (rate(http_server_requests_seconds_count[5m])) > 0.02
+        for: 5m
+        labels: {severity: page}
+        annotations: {summary: "{{ $labels.application }} 5xx rate above 2%"}
+      - alert: SlowOrderApi
+        expr: histogram_quantile(0.99, sum by (le) (rate(http_server_requests_seconds_bucket{application="order-service",uri="/api/v1/orders"}[5m]))) > 0.5
+        for: 10m
+        labels: {severity: ticket}
+        annotations: {summary: "p99 latency for order creation above 500ms"}
+      - alert: OutboxBacklogGrowing
+        expr: max by (application) (outbox_events_pending) > 1000
+        for: 5m
+        labels: {severity: page}
+        annotations: {summary: "{{ $labels.application }} cannot publish events to Kafka"}
+      - alert: DeadLetteredEvents
+        expr: increase(kafka_records_dead_lettered_total[15m]) > 0
+        labels: {severity: ticket}
+        annotations: {summary: "Events parked on {{ $labels.topic }}.DLT need investigation and replay"}
+      - alert: PaymentCircuitOpen
+        expr: max(resilience4j_circuitbreaker_state{name="paymentGateway",state="open"}) == 1
+        for: 1m
+        labels: {severity: page}
+        annotations: {summary: "Payment gateway circuit breaker is open"}
+      - alert: RefundRequired
+        expr: increase(saga_compensation_required_total[1h]) > 0
+        labels: {severity: ticket}
+        annotations: {summary: "Payment authorized for a cancelled order; refund needed"}

@@ -1,0 +1,114 @@
+# Harness CD pipeline: promotes the image tag built by Jenkins through QA -> PROD on EKS.
+pipeline:
+  name: order-platform-cd
+  identifier: order_platform_cd
+  projectIdentifier: order_platform
+  orgIdentifier: default
+  properties:
+    ci:
+      codebase:
+        connectorRef: github
+        repoName: order-platform
+        build: <+input>
+  variables:
+    - name: version
+      type: String
+      value: <+trigger.payload.version>
+  stages:
+    - stage:
+        name: Deploy QA
+        identifier: deploy_qa
+        type: Deployment
+        spec:
+          deploymentType: Kubernetes
+          service:
+            serviceRef: order_platform
+            serviceInputs:
+              serviceDefinition:
+                type: Kubernetes
+                spec:
+                  artifacts:
+                    primary:
+                      type: Ecr
+                      spec: {tag: <+pipeline.variables.version>}
+          environment:
+            environmentRef: qa
+            infrastructureDefinitions: [{identifier: eks_qa}]
+          execution:
+            steps:
+              - step:
+                  name: Rolling deploy
+                  identifier: rolling
+                  type: K8sRollingDeploy
+                  timeout: 10m
+                  spec: {skipDryRun: false}
+              - step:
+                  name: Regression suite
+                  identifier: regression
+                  type: ShellScript
+                  timeout: 20m
+                  spec:
+                    shell: Bash
+                    source:
+                      type: Inline
+                      spec:
+                        script: ./gradlew :order-service:integrationTest -PtargetEnv=qa
+            rollbackSteps:
+              - step: {name: Rollback, identifier: rollback, type: K8sRollingRollback, timeout: 10m, spec: {}}
+
+    - stage:
+        name: Approve PROD
+        identifier: approve_prod
+        type: Approval
+        spec:
+          execution:
+            steps:
+              - step:
+                  name: Change approval
+                  identifier: change_approval
+                  type: HarnessApproval
+                  timeout: 1d
+                  spec:
+                    approvalMessage: Promote <+pipeline.variables.version> to production?
+                    approvers:
+                      userGroups: [release_managers]
+                      minimumCount: 1
+                      disallowPipelineExecutor: true
+
+    - stage:
+        name: Deploy PROD
+        identifier: deploy_prod
+        type: Deployment
+        spec:
+          deploymentType: Kubernetes
+          service: {useFromStage: {stage: deploy_qa}}
+          environment:
+            environmentRef: prod
+            infrastructureDefinitions: [{identifier: eks_prod}]
+          execution:
+            steps:
+              - stepGroup:
+                  name: Canary
+                  identifier: canary
+                  steps:
+                    - step: {name: Canary 10%, identifier: canary_deploy, type: K8sCanaryDeploy, timeout: 10m,
+                             spec: {instanceSelection: {type: Percentage, spec: {percentage: 10}}, skipDryRun: false}}
+                    # Harness Continuous Verification compares canary vs baseline on Prometheus metrics.
+                    - step:
+                        name: Verify canary
+                        identifier: verify
+                        type: Verify
+                        timeout: 30m
+                        spec:
+                          type: Canary
+                          monitoredService: {type: Default, spec: {}}
+                          spec: {sensitivity: HIGH, duration: 15m}
+                    - step: {name: Delete canary, identifier: canary_delete, type: K8sCanaryDelete, timeout: 10m, spec: {}}
+              - step: {name: Rolling deploy, identifier: rolling, type: K8sRollingDeploy, timeout: 15m, spec: {skipDryRun: false}}
+            rollbackSteps:
+              - step: {name: Canary delete, identifier: rb_canary, type: K8sCanaryDelete, timeout: 10m, spec: {}}
+              - step: {name: Rollback, identifier: rb_rolling, type: K8sRollingRollback, timeout: 10m, spec: {}}
+        failureStrategies:
+          - onFailure:
+              errors: [AllErrors]
+              action: {type: StageRollback}

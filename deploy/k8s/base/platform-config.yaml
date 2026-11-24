@@ -1,0 +1,15 @@
+# Non-secret settings shared by all services. Secrets (DB passwords) come from AWS Secrets Manager
+# via the External Secrets Operator into the `<service>-db` Secrets; nothing sensitive lives in Git.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: platform-config
+data:
+  KAFKA_BOOTSTRAP_SERVERS: "b-1.orders-msk.example.amazonaws.com:9094,b-2.orders-msk.example.amazonaws.com:9094,b-3.orders-msk.example.amazonaws.com:9094"
+  KAFKA_CREATE_TOPICS: "false"          # topics are provisioned by Terraform in MSK
+  KAFKA_REPLICATION_FACTOR: "3"
+  REDIS_HOST: "orders-redis.example.cache.amazonaws.com"
+  REDIS_SSL: "true"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector.observability:4318/v1/traces"
+  TRACE_SAMPLING: "0.1"
+  APP_ENV: "dev"

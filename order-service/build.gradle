@@ -1,0 +1,3 @@
+// Shared service dependencies come from the root build (configure block for *-service).
+dependencies {
+}

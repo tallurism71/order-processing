@@ -1,0 +1,16 @@
+# OpenShift reuses the Kubernetes base unchanged (images run as any UID in group 0) and adds Routes.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: order-platform
+resources:
+  - ../k8s/base
+  - routes.yaml
+patches:
+  # OpenShift assigns the UID from the project range; remove the namespace (projects are created by `oc new-project`).
+  - target: {kind: Namespace}
+    patch: |-
+      $patch: delete
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: order-platform

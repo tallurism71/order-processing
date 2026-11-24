@@ -1,0 +1,110 @@
+plugins {
+    id 'org.springframework.boot' version '3.5.6' apply false
+    id 'io.spring.dependency-management' version '1.1.7' apply false
+    id 'org.sonarqube' version '5.1.0.4882'
+}
+
+ext {
+    springBootVersion = '3.5.6'
+    resilience4jVersion = '2.2.0'
+    springdocVersion = '2.8.6'
+    awsSdkVersion = '2.29.0'
+}
+
+allprojects {
+    group = 'com.acme.orderplatform'
+    // Jenkins/Harness pass -PreleaseVersion=<semver>+<build> so the jar, image tag and uDeploy version all match.
+    version = project.findProperty('releaseVersion') ?: '1.0.0-SNAPSHOT'
+    repositories { mavenCentral() }
+}
+
+subprojects {
+    apply plugin: 'java'
+    apply plugin: 'io.spring.dependency-management'
+    apply plugin: 'jacoco'
+
+    dependencyManagement {
+        imports {
+            mavenBom "org.springframework.boot:spring-boot-dependencies:${springBootVersion}"
+            mavenBom "software.amazon.awssdk:bom:${awsSdkVersion}"
+        }
+    }
+
+    tasks.withType(JavaCompile).configureEach {
+        options.release = 21
+        options.encoding = 'UTF-8'
+        options.compilerArgs += ['-parameters', '-Xlint:unchecked']
+    }
+
+    dependencies {
+        testImplementation 'org.springframework.boot:spring-boot-starter-test'
+        testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    }
+
+    // Fast feedback: unit + slice tests run on every build.
+    tasks.named('test', Test) {
+        useJUnitPlatform { excludeTags 'integration' }
+        jvmArgs '-XX:+EnableDynamicAgentLoading'
+        finalizedBy 'jacocoTestReport'
+    }
+
+    // Slower Testcontainers tests (real Postgres, Redis, Kafka) run as their own CI stage.
+    tasks.register('integrationTest', Test) {
+        description = 'Runs Testcontainers-backed integration tests.'
+        group = 'verification'
+        useJUnitPlatform { includeTags 'integration' }
+        testClassesDirs = sourceSets.test.output.classesDirs
+        classpath = sourceSets.test.runtimeClasspath
+        jvmArgs '-XX:+EnableDynamicAgentLoading'
+        // Docker Engine 29+ rejects the old default API version Testcontainers' client sends.
+        systemProperty 'api.version', project.findProperty('dockerApiVersion') ?: '1.44'
+        shouldRunAfter 'test'
+    }
+
+    jacocoTestReport {
+        reports { xml.required = true; html.required = true }
+    }
+
+    // Quality gate enforced in CI (SonarQube reads the same XML report).
+    jacocoTestCoverageVerification {
+        violationRules {
+            rule { limit { minimum = (project.findProperty('minCoverage') ?: '0.60') as BigDecimal } }
+        }
+    }
+}
+
+// Dependencies every deployable microservice shares, so each service build file only lists what is specific to it.
+configure(subprojects.findAll { it.name.endsWith('-service') }) {
+    apply plugin: 'org.springframework.boot'
+
+    dependencies {
+        implementation project(':platform-common')
+        implementation 'org.springframework.boot:spring-boot-starter-web'
+        implementation 'org.springframework.boot:spring-boot-starter-validation'
+        implementation 'org.springframework.boot:spring-boot-starter-actuator'
+        implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+        implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+        implementation 'org.springframework.boot:spring-boot-starter-cache'
+        implementation 'org.springframework.kafka:spring-kafka'
+        implementation 'org.flywaydb:flyway-core'
+        implementation 'org.flywaydb:flyway-database-postgresql'
+        implementation 'io.micrometer:micrometer-registry-prometheus'
+        implementation 'io.micrometer:micrometer-tracing-bridge-otel'
+        implementation 'io.opentelemetry:opentelemetry-exporter-otlp'
+        implementation "org.springdoc:springdoc-openapi-starter-webmvc-ui:${springdocVersion}"
+        runtimeOnly 'org.postgresql:postgresql'
+
+        testImplementation 'org.springframework.kafka:spring-kafka-test'
+        testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+        testImplementation 'org.testcontainers:junit-jupiter'
+        testImplementation 'org.testcontainers:postgresql'
+        testImplementation 'org.testcontainers:kafka'
+        testImplementation 'org.awaitility:awaitility'
+    }
+
+    bootJar {
+        archiveFileName = "${project.name}.jar"
+        layered { enabled = true }
+    }
+    jar { enabled = false }
+}

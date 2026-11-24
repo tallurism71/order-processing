@@ -1,0 +1,5 @@
+dependencies {
+    // Circuit breaker + retry around the external payment gateway.
+    implementation "io.github.resilience4j:resilience4j-spring-boot3:${resilience4jVersion}"
+    implementation 'org.springframework.boot:spring-boot-starter-aop'
+}

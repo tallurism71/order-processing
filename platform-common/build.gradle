@@ -1,0 +1,14 @@
+plugins {
+    id 'java-library'
+}
+
+// Shared, versioned library: event contract, outbox/inbox, Kafka error handling,
+// correlation IDs and RFC 7807 error responses. Every service gets the same behaviour.
+dependencies {
+    api 'org.springframework.boot:spring-boot-starter-web'
+    api 'org.springframework.boot:spring-boot-starter-jdbc'
+    api 'org.springframework.kafka:spring-kafka'
+    api 'io.micrometer:micrometer-core'
+    api 'org.springframework.boot:spring-boot-starter-validation'
+    annotationProcessor 'org.springframework.boot:spring-boot-autoconfigure-processor'
+}
