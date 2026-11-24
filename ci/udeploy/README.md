@@ -4,7 +4,7 @@ Used when the bank's release process requires uDeploy instead of Harness.
 
 | uDeploy object | Value |
 |---|---|
-| Application | `order-platform` |
+| Application | `order-processing` |
 | Components | `order-service`, `inventory-service`, `payment-service`, `reconciliation-batch` |
 | Component version | the immutable image tag built by Jenkins, e.g. `1.0.412-3f9c2ab1` |
 | Environments | DEV → QA → UAT → PROD, with approval gates on UAT and PROD |

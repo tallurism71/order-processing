@@ -1,8 +1,8 @@
 #!/bin/bash
-# EC2 bootstrap (runs once at first boot). Log: /var/log/order-platform-bootstrap.log
+# EC2 bootstrap (runs once at first boot). Log: /var/log/order-processing-bootstrap.log
 # Terraform fills in: repo_url, git_ref, extract_bucket, region.
 set -euxo pipefail
-exec > >(tee -a /var/log/order-platform-bootstrap.log) 2>&1
+exec > >(tee -a /var/log/order-processing-bootstrap.log) 2>&1
 
 # 1. Packages: Docker, Git, findutils (xargs, needed by gradlew), JDK 21 (to build the jars on the instance)
 dnf install -y docker git findutils java-21-amazon-corretto-devel
@@ -23,12 +23,12 @@ if [ ! -f /swapfile ]; then
 fi
 
 # 3. Code: clone and build the jars
-git clone --branch "${git_ref}" --depth 1 "${repo_url}" /opt/order-platform
-cd /opt/order-platform
+git clone --branch "${git_ref}" --depth 1 "${repo_url}" /opt/order-processing
+cd /opt/order-processing
 ./gradlew build -x test --no-daemon
 
 # 4. Settings for the AWS compose override
-cat > /opt/order-platform/.env <<ENV
+cat > /opt/order-processing/.env <<ENV
 EXTRACT_BUCKET=${extract_bucket}
 AWS_REGION=${region}
 ENV
@@ -45,7 +45,7 @@ Requires=docker.service
 
 [Service]
 Type=oneshot
-WorkingDirectory=/opt/order-platform
+WorkingDirectory=/opt/order-processing
 ExecStart=/usr/bin/docker compose -f docker-compose.yml -f deploy/aws/docker-compose.aws.yml --profile batch run --rm reconciliation-batch
 UNIT
 

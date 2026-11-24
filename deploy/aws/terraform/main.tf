@@ -28,7 +28,7 @@ data "aws_ssm_parameter" "al2023" {
 # ---------- S3 bucket for reconciliation extracts ----------
 
 resource "aws_s3_bucket" "extracts" {
-  bucket        = "order-platform-extracts-${data.aws_caller_identity.current.account_id}-${var.region}"
+  bucket        = "order-processing-extracts-${data.aws_caller_identity.current.account_id}-${var.region}"
   force_destroy = true # demo only: lets `terraform destroy` remove the bucket with its files
 }
 
@@ -75,7 +75,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "extracts" {
 # ---------- IAM: the instance role (no access keys anywhere) ----------
 
 resource "aws_iam_role" "app" {
-  name_prefix = "order-platform-demo-"
+  name_prefix = "order-processing-demo-"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -114,14 +114,14 @@ resource "aws_iam_role_policy" "extracts" {
 }
 
 resource "aws_iam_instance_profile" "app" {
-  name_prefix = "order-platform-demo-"
+  name_prefix = "order-processing-demo-"
   role        = aws_iam_role.app.name
 }
 
 # ---------- Network ----------
 
 resource "aws_security_group" "app" {
-  name_prefix = "order-platform-demo-"
+  name_prefix = "order-processing-demo-"
   description = "Order API reachable only from allowed_cidr"
   vpc_id      = data.aws_vpc.default.id
 
@@ -183,7 +183,7 @@ resource "aws_instance" "app" {
   }
 
   tags = {
-    Name = "order-platform-demo"
+    Name = "order-processing-demo"
   }
 
   lifecycle {

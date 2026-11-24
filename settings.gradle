@@ -1,4 +1,4 @@
-rootProject.name = 'order-platform'
+rootProject.name = 'order-processing'
 
 include 'platform-common'
 include 'order-service'

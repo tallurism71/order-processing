@@ -21,5 +21,5 @@ output "shell" {
 }
 
 output "bootstrap_log" {
-  value = "aws ssm start-session --target ${aws_instance.app.id} --region ${var.region}  then: sudo tail -f /var/log/order-platform-bootstrap.log"
+  value = "aws ssm start-session --target ${aws_instance.app.id} --region ${var.region}  then: sudo tail -f /var/log/order-processing-bootstrap.log"
 }

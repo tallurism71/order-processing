@@ -48,7 +48,7 @@ pipeline {
                 stage('SonarQube') {
                     steps {
                         withSonarQubeEnv('sonarqube') {
-                            sh './gradlew sonar -Dsonar.projectKey=order-platform -Dsonar.projectVersion=$VERSION --no-daemon'
+                            sh './gradlew sonar -Dsonar.projectKey=order-processing -Dsonar.projectVersion=$VERSION --no-daemon'
                         }
                         timeout(time: 10, unit: 'MINUTES') { waitForQualityGate abortPipeline: true }
                     }
@@ -61,7 +61,7 @@ pipeline {
                     steps {
                         withCredentials([usernamePassword(credentialsId: 'veracode', usernameVariable: 'VID', passwordVariable: 'VKEY')]) {
                             sh 'zip -qr scan.zip */build/libs/*.jar'
-                            veracode applicationName: 'order-platform', criticality: 'High', scanName: "$VERSION",
+                            veracode applicationName: 'order-processing', criticality: 'High', scanName: "$VERSION",
                                      uploadIncludesPattern: 'scan.zip', vid: VID, vkey: VKEY, waitForScan: true,
                                      timeout: 30, canFailJob: true
                         }
@@ -104,7 +104,7 @@ pipeline {
                   aws eks update-kubeconfig --name orders-dev --region $AWS_REGION
                   kubectl apply -k deploy/k8s/overlays/dev
                   for d in order-service inventory-service payment-service; do
-                    kubectl -n order-platform-dev rollout status deploy/$d --timeout=300s
+                    kubectl -n order-processing-dev rollout status deploy/$d --timeout=300s
                   done
                 '''
             }
@@ -149,8 +149,8 @@ pipeline {
     }
 
     post {
-        failure { slackSend channel: '#order-platform-builds', color: 'danger', message: "FAILED ${env.JOB_NAME} #${env.BUILD_NUMBER} (${env.VERSION}) ${env.BUILD_URL}" }
-        fixed   { slackSend channel: '#order-platform-builds', color: 'good',   message: "FIXED ${env.JOB_NAME} #${env.BUILD_NUMBER}" }
+        failure { slackSend channel: '#order-processing-builds', color: 'danger', message: "FAILED ${env.JOB_NAME} #${env.BUILD_NUMBER} (${env.VERSION}) ${env.BUILD_URL}" }
+        fixed   { slackSend channel: '#order-processing-builds', color: 'good',   message: "FIXED ${env.JOB_NAME} #${env.BUILD_NUMBER}" }
         always  { archiveArtifacts artifacts: '**/build/reports/**', allowEmptyArchive: true }
     }
 }

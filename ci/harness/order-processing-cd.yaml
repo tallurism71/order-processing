@@ -1,14 +1,14 @@
 # Harness CD pipeline: promotes the image tag built by Jenkins through QA -> PROD on EKS.
 pipeline:
-  name: order-platform-cd
-  identifier: order_platform_cd
-  projectIdentifier: order_platform
+  name: order-processing-cd
+  identifier: order_processing_cd
+  projectIdentifier: order_processing
   orgIdentifier: default
   properties:
     ci:
       codebase:
         connectorRef: github
-        repoName: order-platform
+        repoName: order-processing
         build: <+input>
   variables:
     - name: version
@@ -22,7 +22,7 @@ pipeline:
         spec:
           deploymentType: Kubernetes
           service:
-            serviceRef: order_platform
+            serviceRef: order_processing
             serviceInputs:
               serviceDefinition:
                 type: Kubernetes

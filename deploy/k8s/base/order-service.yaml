@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: order-service
-  labels: {app: order-service, part-of: order-platform}
+  labels: {app: order-service, part-of: order-processing}
 spec:
   replicas: 3
   revisionHistoryLimit: 5
@@ -13,13 +13,13 @@ spec:
     rollingUpdate: {maxUnavailable: 0, maxSurge: 1}   # zero-downtime deploys
   template:
     metadata:
-      labels: {app: order-service, part-of: order-platform}
+      labels: {app: order-service, part-of: order-processing}
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/path: /actuator/prometheus
         prometheus.io/port: "8081"
     spec:
-      serviceAccountName: order-platform
+      serviceAccountName: order-processing
       terminationGracePeriodSeconds: 45
       # Spread replicas across availability zones and nodes: one AZ outage does not take the service down.
       topologySpreadConstraints:

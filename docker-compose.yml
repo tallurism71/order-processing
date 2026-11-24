@@ -1,7 +1,7 @@
 # Local environment: the same topology as AWS (RDS Postgres, ElastiCache Redis, MSK Kafka) in containers.
 #   ./gradlew build && docker compose up --build
 #   docker compose --profile batch run --rm reconciliation-batch --businessDate=2026-11-24
-name: order-platform
+name: order-processing
 
 x-service: &service
   restart: unless-stopped

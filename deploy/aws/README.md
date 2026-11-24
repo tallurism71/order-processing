@@ -63,7 +63,7 @@ To watch the bootstrap:
 
 ```bash
 aws ssm start-session --target <instance_id>
-sudo tail -f /var/log/order-platform-bootstrap.log      # ends with BOOTSTRAP COMPLETE
+sudo tail -f /var/log/order-processing-bootstrap.log      # ends with BOOTSTRAP COMPLETE
 ```
 
 ## Try it
@@ -77,7 +77,7 @@ curl -s -X POST $API -H "Content-Type: application/json" -H "Idempotency-Key: de
 Run the reconciliation batch now instead of waiting for 01:30 UTC (from a Session Manager shell):
 
 ```bash
-cd /opt/order-platform
+cd /opt/order-processing
 sudo docker compose -f docker-compose.yml -f deploy/aws/docker-compose.aws.yml --profile batch \
   run --rm reconciliation-batch --businessDate=$(date -u +%F) --rerun
 ```
@@ -101,7 +101,7 @@ aws ssm start-session --target <instance_id> --document-name AWS-StartPortForwar
 The instance clones `git_ref` once, at first boot. After pushing changes, either:
 
 - run `terraform apply -replace=aws_instance.app` to get a fresh instance (simplest), or
-- in a Session Manager shell: `cd /opt/order-platform && sudo git pull && sudo ./gradlew build -x test && sudo docker compose -f docker-compose.yml -f deploy/aws/docker-compose.aws.yml up -d --build`
+- in a Session Manager shell: `cd /opt/order-processing && sudo git pull && sudo ./gradlew build -x test && sudo docker compose -f docker-compose.yml -f deploy/aws/docker-compose.aws.yml up -d --build`
 
 ## Tear down
 

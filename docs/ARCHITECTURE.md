@@ -1,4 +1,4 @@
-# Order Platform: Architecture
+# Order Processing: Architecture
 
 An order processing system built from Spring Boot microservices on AWS. Each section below maps
 to a design goal and names the code that implements it, so every claim can be checked in the source.
