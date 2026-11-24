@@ -1,0 +1,33 @@
+# Overrides for the single-instance AWS demo. Used together with the base file:
+#   docker compose -f docker-compose.yml -f deploy/aws/docker-compose.aws.yml up -d
+# EXTRACT_BUCKET and AWS_REGION come from the .env file written by the EC2 bootstrap.
+# AWS credentials come from the instance's IAM role (IMDSv2), never from files or env vars.
+
+x-jvm: &jvm "-Xms256m -Xmx512m -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError"
+
+services:
+  kafka:
+    environment:
+      KAFKA_HEAP_OPTS: "-Xms256m -Xmx512m"
+
+  order-service:
+    environment:
+      JAVA_OPTS: *jvm
+      APP_ENV: aws-demo
+
+  inventory-service:
+    environment:
+      JAVA_OPTS: *jvm
+      APP_ENV: aws-demo
+
+  payment-service:
+    environment:
+      JAVA_OPTS: *jvm
+      APP_ENV: aws-demo
+
+  reconciliation-batch:
+    environment:
+      JAVA_OPTS: *jvm
+      EXTRACT_TARGET: s3
+      EXTRACT_BUCKET: ${EXTRACT_BUCKET:?set EXTRACT_BUCKET in .env}
+      AWS_REGION: ${AWS_REGION:-us-east-1}

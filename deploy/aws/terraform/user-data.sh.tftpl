@@ -1,0 +1,67 @@
+#!/bin/bash
+# EC2 bootstrap (runs once at first boot). Log: /var/log/order-platform-bootstrap.log
+# Terraform fills in: repo_url, git_ref, extract_bucket, region.
+set -euxo pipefail
+exec > >(tee -a /var/log/order-platform-bootstrap.log) 2>&1
+
+# 1. Packages: Docker, Git, findutils (xargs, needed by gradlew), JDK 21 (to build the jars on the instance)
+dnf install -y docker git findutils java-21-amazon-corretto-devel
+systemctl enable --now docker
+
+# Docker Compose and Buildx plugins (pinned versions; not packaged for Amazon Linux)
+mkdir -p /usr/local/lib/docker/cli-plugins
+curl -fsSL -o /usr/local/lib/docker/cli-plugins/docker-compose \
+  https://github.com/docker/compose/releases/download/v2.29.7/docker-compose-linux-x86_64
+curl -fsSL -o /usr/local/lib/docker/cli-plugins/docker-buildx \
+  https://github.com/docker/buildx/releases/download/v0.17.1/buildx-v0.17.1.linux-amd64
+chmod +x /usr/local/lib/docker/cli-plugins/docker-compose /usr/local/lib/docker/cli-plugins/docker-buildx
+
+# 2. 2 GiB swap: headroom for the Gradle build on smaller instance types
+if [ ! -f /swapfile ]; then
+  fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+  echo '/swapfile swap swap defaults 0 0' >> /etc/fstab
+fi
+
+# 3. Code: clone and build the jars
+git clone --branch "${git_ref}" --depth 1 "${repo_url}" /opt/order-platform
+cd /opt/order-platform
+./gradlew build -x test --no-daemon
+
+# 4. Settings for the AWS compose override
+cat > /opt/order-platform/.env <<ENV
+EXTRACT_BUCKET=${extract_bucket}
+AWS_REGION=${region}
+ENV
+
+# 5. Start the stack (restart: unless-stopped brings it back after a reboot)
+docker compose -f docker-compose.yml -f deploy/aws/docker-compose.aws.yml up -d --build
+
+# 6. Nightly reconciliation batch at 01:30 UTC, writing its extract to S3
+cat > /etc/systemd/system/order-reconciliation.service <<UNIT
+[Unit]
+Description=Order reconciliation batch (previous business day)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/order-platform
+ExecStart=/usr/bin/docker compose -f docker-compose.yml -f deploy/aws/docker-compose.aws.yml --profile batch run --rm reconciliation-batch
+UNIT
+
+cat > /etc/systemd/system/order-reconciliation.timer <<UNIT
+[Unit]
+Description=Run order reconciliation nightly
+
+[Timer]
+OnCalendar=*-*-* 01:30:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+UNIT
+
+systemctl daemon-reload
+systemctl enable --now order-reconciliation.timer
+
+echo "BOOTSTRAP COMPLETE"

@@ -5,3 +5,9 @@ out/
 *.iml
 .DS_Store
 extracts/
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+terraform.tfvars
+.terraform.lock.hcl.bak
