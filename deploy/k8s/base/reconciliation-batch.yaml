@@ -19,6 +19,9 @@ spec:
           labels: {app: reconciliation-batch}
         spec:
           serviceAccountName: order-processing
+          # Config comes from platform-config only. Without this, a Service named "redis" injects
+          # REDIS_PORT=tcp://<ip>:6379 into the pod, which breaks Spring property binding.
+          enableServiceLinks: false
           restartPolicy: Never
           securityContext:
             runAsNonRoot: true

@@ -20,6 +20,9 @@ spec:
         prometheus.io/port: "8081"
     spec:
       serviceAccountName: order-processing
+      # Config comes from platform-config only. Without this, a Service named "redis" injects
+      # REDIS_PORT=tcp://<ip>:6379 into the pod, which breaks Spring property binding.
+      enableServiceLinks: false
       terminationGracePeriodSeconds: 45
       # Spread replicas across availability zones and nodes: one AZ outage does not take the service down.
       topologySpreadConstraints:

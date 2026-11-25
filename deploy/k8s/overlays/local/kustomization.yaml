@@ -1,0 +1,92 @@
+# Run the whole system on a laptop Kubernetes (Docker Desktop, kind, minikube).
+#   ./gradlew build -x test
+#   for m in order-service inventory-service payment-service reconciliation-batch; do
+#     docker build --build-arg MODULE=$m -t $m:local . ; done
+#   kubectl apply -k deploy/k8s/overlays/local
+# Same base manifests as dev/prod; only what is different on a laptop is patched here.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: order-processing-local
+resources:
+  - ../../base
+  - infra.yaml
+
+# Images built on this machine (docker build ... -t <name>:local); never pulled from a registry.
+images:
+  - {name: order-service, newTag: local}
+  - {name: inventory-service, newTag: local}
+  - {name: payment-service, newTag: local}
+  - {name: reconciliation-batch, newTag: local}
+
+configMapGenerator:
+  - name: postgres-init
+    files: [init.sql=postgres-init.sql]
+
+# Local demo credentials only (match postgres-init.sql). Real environments get these from
+# AWS Secrets Manager through the External Secrets Operator.
+secretGenerator:
+  - name: order-service-db
+    literals: [username=orders, password=orders]
+  - name: inventory-service-db
+    literals: [username=inventory, password=inventory]
+  - name: payment-service-db
+    literals: [username=payment, password=payment]
+  - name: reconciliation-batch-db
+    literals: [username=recon, password=recon, orders-username=recon, orders-password=recon]
+generatorOptions:
+  disableNameSuffixHash: true
+
+patches:
+  # Point the shared config at the in-cluster Kafka and Redis.
+  - target: {kind: ConfigMap, name: platform-config}
+    patch: |-
+      - {op: replace, path: /data/KAFKA_BOOTSTRAP_SERVERS, value: "kafka:9092"}
+      - {op: replace, path: /data/KAFKA_CREATE_TOPICS, value: "true"}
+      - {op: replace, path: /data/KAFKA_REPLICATION_FACTOR, value: "1"}
+      - {op: replace, path: /data/REDIS_HOST, value: redis}
+      - {op: replace, path: /data/REDIS_SSL, value: "false"}
+      - {op: replace, path: /data/TRACE_SAMPLING, value: "0"}
+      - {op: replace, path: /data/APP_ENV, value: local-k8s}
+
+  # All three services: 1 replica, local image, smaller footprint.
+  - target: {kind: Deployment, labelSelector: "part-of=order-processing"}
+    patch: |-
+      - {op: replace, path: /spec/replicas, value: 1}
+      - {op: add, path: /spec/template/spec/containers/0/imagePullPolicy, value: Never}
+      - {op: replace, path: /spec/template/spec/containers/0/resources, value: {requests: {cpu: 200m, memory: 512Mi}, limits: {memory: 768Mi}}}
+      - {op: replace, path: /spec/template/spec/containers/0/env/3/value, value: "-Xms128m -Xmx384m -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError"}
+  - target: {kind: Deployment, name: order-service}
+    patch: |-
+      - {op: replace, path: /spec/template/spec/containers/0/env/0/value, value: "jdbc:postgresql://postgres:5432/orderdb"}
+  - target: {kind: Deployment, name: inventory-service}
+    patch: |-
+      - {op: replace, path: /spec/template/spec/containers/0/env/0/value, value: "jdbc:postgresql://postgres:5432/inventorydb"}
+  - target: {kind: Deployment, name: payment-service}
+    patch: |-
+      - {op: replace, path: /spec/template/spec/containers/0/env/0/value, value: "jdbc:postgresql://postgres:5432/paymentdb"}
+
+  # Laptop has one node: allow scaling down to 1, and let node drains proceed.
+  - target: {kind: HorizontalPodAutoscaler}
+    patch: |-
+      - {op: replace, path: /spec/minReplicas, value: 1}
+      - {op: replace, path: /spec/maxReplicas, value: 3}
+  - target: {kind: PodDisruptionBudget}
+    patch: |-
+      - {op: replace, path: /spec/minAvailable, value: 0}
+
+  # Reach the order API at http://localhost:38081 (Docker Desktop maps LoadBalancer services to localhost).
+  - target: {kind: Service, name: order-service}
+    patch: |-
+      - {op: add, path: /spec/type, value: LoadBalancer}
+      - {op: replace, path: /spec/ports/0/port, value: 38081}
+
+  # Nightly batch: local databases, extract written to the pod's /tmp instead of S3.
+  - target: {kind: CronJob, name: reconciliation-batch}
+    patch: |-
+      - {op: add, path: /spec/jobTemplate/spec/template/spec/containers/0/imagePullPolicy, value: Never}
+      - {op: replace, path: /spec/jobTemplate/spec/template/spec/containers/0/env/0/value, value: "jdbc:postgresql://postgres:5432/recondb"}
+      - {op: replace, path: /spec/jobTemplate/spec/template/spec/containers/0/env/3/value, value: "jdbc:postgresql://postgres:5432/orderdb"}
+      - {op: replace, path: /spec/jobTemplate/spec/template/spec/containers/0/env/6/value, value: local}
+      - {op: add, path: /spec/jobTemplate/spec/template/spec/containers/0/env/-, value: {name: EXTRACT_DIR, value: /tmp/extracts}}
+      - {op: replace, path: /spec/jobTemplate/spec/template/spec/containers/0/env/9/value, value: "2"}
+      - {op: replace, path: /spec/jobTemplate/spec/template/spec/containers/0/resources, value: {requests: {cpu: 200m, memory: 512Mi}, limits: {memory: 768Mi}}}
